@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU Project</title>
+    <style>body{margin: 0;}</style>
+</head>
+
+<body>
+    <div id="webgpu-instructions" style="display:none;">
+        <h2>WebGPU Required</h2>
+        <p>Your browser does not have WebGPU enabled. Please follow these steps:</p>
+        <ul>
+            <li>Update your browser to the latest version.</li>
+            <li>For Chrome/Edge: Go to <code>chrome://flags/#enable-unsafe-webgpu</code>, enable the flag, and restart.
+            </li>
+            <li>For Firefox Nightly: Go to <code>about:config</code>, set <code>dom.webgpu.enabled</code> to
+                <code>true</code>, and restart.
+            </li>
+            <li>For Safari: Enable WebGPU in the Develop menu or Feature Flags.</li>
+        </ul>
+    </div>
+    <canvas id="webgpu-canvas"></canvas>
+    <script src="index.js"></script>
+
+</body>
+
+</html>

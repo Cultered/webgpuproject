@@ -29,14 +29,25 @@ fn vertex_main(@location(0) position: vec4f,
     @location(1) color: vec4f) -> VertexOut {
     var output: VertexOut;
     var aspect = view.width / view.height;
-    var near = 0.;
-    var far = 100.;
+    var near = 0.1;
+    var far = 100000.;
 
-    var cameraPosition = vec4f(0.0, 0.0, 0.0, 0.0);
+    var cameraPosition = vec4f(0.0, 0.0, 2.0, 0.0);
 
 
-
-    output.position = perspectiveProjection(position,170., aspect, near, far);
+    // Apply a rotation around the Y axis
+    let angle = radians(10.0);
+    let cosA = cos(angle);
+    let sinA = sin(angle);
+    let rotationY = mat4x4<f32>(
+        vec4<f32>(cosA, 0.0, -sinA, 0.0),
+        vec4<f32>(0.0, 1.0, 0.0, 0.0),
+        vec4<f32>(sinA, 0.0, cosA, 0.0),
+        vec4<f32>(0.0, 0.0, 0.0, 1.0)
+    );
+    let relativePosition = position - cameraPosition;
+    let rotatedPosition = rotationY * relativePosition;
+    output.position = perspectiveProjection(rotatedPosition, 90., aspect, near, far);
     output.color = color;
     return output;
 }

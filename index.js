@@ -25,12 +25,12 @@ async function getContext() {
 async function initWebGPU() {
 
     try {
-        const c = [1.0, 0.0, 1.0, 1.0]; // Example color (red, fully opaque)
+        const c = [0.0, 0.0, 0., 1.0]; // Example color (red, fully opaque)
         const width = window.innerWidth;
         const height = window.innerHeight;
         const verticesArray = [];
-        const latitudeBands = 10;
-        const longitudeBands = 10;
+        const latitudeBands = 1000;
+        const longitudeBands = 1000;
         const radius = 1;
         // Generate sphere vertices (triangle list)
         for (let lat = 0; lat < latitudeBands; lat++) {
@@ -38,64 +38,59 @@ async function initWebGPU() {
             const theta2 = ((lat + 1) / latitudeBands) * Math.PI;
 
             for (let lon = 0; lon < longitudeBands; lon++) {
-            const phi1 = (lon / longitudeBands) * 2 * Math.PI;
-            const phi2 = ((lon + 1) / longitudeBands) * 2 * Math.PI;
+                const phi1 = (lon / longitudeBands) * 2 * Math.PI;
+                const phi2 = ((lon + 1) / longitudeBands) * 2 * Math.PI;
 
-            // Four points of the quad
-            const p1 = [
-                radius * Math.sin(theta1) * Math.cos(phi1),
-                radius * Math.cos(theta1),
-                radius * Math.sin(theta1) * Math.sin(phi1),
-                1
-            ];
-            const p2 = [
-                radius * Math.sin(theta2) * Math.cos(phi1),
-                radius * Math.cos(theta2),
-                radius * Math.sin(theta2) * Math.sin(phi1),
-                1
-            ];
-            const p3 = [
-                radius * Math.sin(theta2) * Math.cos(phi2),
-                radius * Math.cos(theta2),
-                radius * Math.sin(theta2) * Math.sin(phi2),
-                1
-            ];
-            const p4 = [
-                radius * Math.sin(theta1) * Math.cos(phi2),
-                radius * Math.cos(theta1),
-                radius * Math.sin(theta1) * Math.sin(phi2),
-                1
-            ];
+                // Four points of the quad
+                const p1 = [
+                    radius * Math.sin(theta1) * Math.cos(phi1),
+                    radius * Math.cos(theta1),
+                    radius * Math.sin(theta1) * Math.sin(phi1),
+                    1
+                ];
+                const p2 = [
+                    radius * Math.sin(theta2) * Math.cos(phi1),
+                    radius * Math.cos(theta2),
+                    radius * Math.sin(theta2) * Math.sin(phi1),
+                    1
+                ];
+                const p3 = [
+                    radius * Math.sin(theta2) * Math.cos(phi2),
+                    radius * Math.cos(theta2),
+                    radius * Math.sin(theta2) * Math.sin(phi2),
+                    1
+                ];
+                const p4 = [
+                    radius * Math.sin(theta1) * Math.cos(phi2),
+                    radius * Math.cos(theta1),
+                    radius * Math.sin(theta1) * Math.sin(phi2),
+                    1
+                ];
 
-            // Assign a unique color per quad based on lat/lon
-            const color1 = [
-                lat / latitudeBands,
-                lon / longitudeBands,
-                1.0 - lat / latitudeBands,
-                1
-            ];
-            const color2 = [
-                (lat + 1) / latitudeBands,
-                (lon +1) / longitudeBands,
-                1.0 - (lat + 1) / latitudeBands,
-                1
-            ];
+                // Assign a unique color per quad based on lat/lon
+                
+                const color1 = [
+                    (lat) / latitudeBands,
+                    (lon) / longitudeBands,
+                    1.0 - (lat) / latitudeBands,
+                    1
+                ];
 
-            // First triangle
-            verticesArray.push(...p1, ...color1);
-            verticesArray.push(...p2, ...color2);
-            verticesArray.push(...p3, ...color1);
+                // First triangle
+                verticesArray.push(...p1, ...color1);
+                verticesArray.push(...p2, ...color1);
+                verticesArray.push(...p3, ...color1);
 
-            // Second triangle
-            verticesArray.push(...p1, ...color1);
-            verticesArray.push(...p3, ...color1);
-            verticesArray.push(...p4, ...color2);
+                // Second triangle
+                verticesArray.push(...p1, ...color1);
+                verticesArray.push(...p3, ...color1);
+                verticesArray.push(...p4, ...color1);
             }
         }
         const vertices = new Float32Array(verticesArray);
         const [adapter, device, canvas, context, format] = await getContext()
-        canvas.width = window.innerWidth-1
-        canvas.height = window.innerHeight-1
+        canvas.width = window.innerWidth - 1
+        canvas.height = window.innerHeight - 1
         const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
         const vertexBuffer = device.createBuffer({
             size: vertices.byteLength, // make it big enough to store vertices in
@@ -183,6 +178,11 @@ async function initWebGPU() {
             multisample: {
                 count: 4, // 4x MSAA
             },
+            depthStencil: {
+                format: 'depth24plus', // or 'depth32float'
+                depthWriteEnabled: true,
+                depthCompare: 'less',  // Common default
+            },
         };
         const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
 
@@ -196,7 +196,12 @@ async function initWebGPU() {
             format,
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
         });
-
+        const depthTexture = device.createTexture({
+            size: [canvas.width, canvas.height],
+            sampleCount,
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
         const renderPassDescriptor = {
             colorAttachments: [{
                 view: msaaTexture.createView(),
@@ -205,6 +210,12 @@ async function initWebGPU() {
                 loadOp: "clear",
                 storeOp: "store",
             }],
+            depthStencilAttachment: {
+                view: depthTexture.createView(),
+                depthLoadOp: 'clear',
+                depthClearValue: 1.0,
+                depthStoreOp: 'store',
+            },
         };
 
 

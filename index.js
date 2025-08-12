@@ -22,16 +22,11 @@ async function getContext() {
     });
     return [adapter, device, canvas, context, format];
 }
-async function initWebGPU() {
 
-    try {
-        const c = [0.0, 0.0, 0., 1.0]; // Example color (red, fully opaque)
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const verticesArray = [];
-        const latitudeBands = 1000;
-        const longitudeBands = 1000;
-        const radius = 1;
+async function sphere(lat, long, radius) {
+    const verticesArray = [];
+        const latitudeBands = lat;
+        const longitudeBands = long;
         // Generate sphere vertices (triangle list)
         for (let lat = 0; lat < latitudeBands; lat++) {
             const theta1 = (lat / latitudeBands) * Math.PI;
@@ -68,7 +63,7 @@ async function initWebGPU() {
                 ];
 
                 // Assign a unique color per quad based on lat/lon
-                
+
                 const color1 = [
                     (lat) / latitudeBands,
                     (lon) / longitudeBands,
@@ -87,26 +82,37 @@ async function initWebGPU() {
                 verticesArray.push(...p4, ...color1);
             }
         }
+    return verticesArray;
+}
+
+async function initWebGPU() {
+
+    try {
+        const [_, device, canvas, context, format] = await getContext()
+        const verticesArray= await sphere(20,20,1)
+
         const vertices = new Float32Array(verticesArray);
-        const [adapter, device, canvas, context, format] = await getContext()
-        canvas.width = window.innerWidth - 1
-        canvas.height = window.innerHeight - 1
-        const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
-        const vertexBuffer = device.createBuffer({
-            size: vertices.byteLength, // make it big enough to store vertices in
-            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        });
-        const uniformBuffer = device.createBuffer({
-            size: 8,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
         const uniformData = new Float32Array([
             canvas.width,
             canvas.height
         ]);
-        device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+        
+        canvas.width = window.innerWidth
+        canvas.height = window.innerHeight
+        const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
 
+        const vertexBuffer = device.createBuffer({
+            size: vertices.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        const uniformBuffer = device.createBuffer({
+            size: uniformData.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        device.queue.writeBuffer(uniformBuffer, 0, uniformData);
         device.queue.writeBuffer(vertexBuffer, 0, vertices, 0, vertices.length);
+        
         const vertexBuffers = [
             {
                 attributes: [
@@ -233,5 +239,8 @@ async function initWebGPU() {
         console.error("WebGPU initialization failed:", error);
         document.getElementById('webgpu-instructions').style.display = 'block';
     }
+}
+function render() {
+    requestAnimationFrame(render);
 }
 initWebGPU()

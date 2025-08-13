@@ -118,7 +118,7 @@ class GameScript {
         this.src = src;
         this.params = {};
     }
-    run () {
+    run() {
         this.src(this.params);
     }
 }
@@ -139,18 +139,128 @@ async function initWebGPU() {
 
     try {
         const [_, device, canvas, context, format] = await getContext()
+        canvas.addEventListener("webgpucontextlost", (event) => {
+            event.preventDefault();
+            console.error("WebGPU context lost! Attempting to recover...");
+        });
+
         const verticesArray = await sphere(30, 5, 1)
+        const clearColor = { r: 1, g: 1, b: 1, a: 1.0 };
+        const sampleCount = 1;
         const player = new Player();
         const sphereObject = new Sphere(1, 30, 5);
         sphereObject.props['vertices'] = verticesArray;
+        const vertices = new Float32Array(sphereObject.props['vertices']);
         const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
+        const vertexBuffer = device.createBuffer({
+            size: vertices.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        const uniform0Buffer = device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const uniform1buffer = device.createBuffer({
+            size: 32,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const vertexBuffers = [
+            {
+                attributes: [
+                    {
+                        shaderLocation: 0, // position
+                        offset: 0,
+                        format: "float32x4",
+                    },
+                    {
+                        shaderLocation: 1, // color
+                        offset: 16,
+                        format: "float32x4",
+                    },
+                ],
+                arrayStride: 32,
+                stepMode: "vertex",
+            },
+        ];
+        const bindGroupLayout = device.createBindGroupLayout({
+            entries: [{
+                binding: 0,  // Must match @binding(0) in WGSL
+                visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+                buffer: {
+                    type: 'uniform'
+                }
+            }
+                , {
+                binding: 1,  // Must match @binding(1) in WGSL
+                visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
+                buffer: {
+                    type: 'uniform'
+                }
+            }]
+        });
+        const bindGroup = device.createBindGroup({
+            layout: bindGroupLayout,
+            entries: [{
+                binding: 0,
+                resource: { buffer: uniform0Buffer }
+            },
+            {
+                binding: 1,
+                resource: { buffer: uniform1buffer }
+            }]
+        });
+        const pipelineDescriptor = {
+            vertex: {
+                module: shaderModule,
+                entryPoint: "vertex_main",
+                buffers: vertexBuffers,
+            },
+            fragment: {
+                module: shaderModule,
+                entryPoint: "fragment_main",
+                targets: [
+                    {
+                        format: navigator.gpu.getPreferredCanvasFormat(),
+                        blend: {
+                            color: {
+                                srcFactor: 'one',
+                                dstFactor: 'one-minus-src-alpha'
+                            },
+                            alpha: {
+                                srcFactor: 'one',
+                                dstFactor: 'one-minus-src-alpha'
+                            },
+                        },
+                    },
+                ],
+            },
+            primitive: {
+                topology: "triangle-list",
+            },
 
+            layout: device.createPipelineLayout({
+                bindGroupLayouts: [bindGroupLayout]
+            }),
+            multisample: {
+                count: sampleCount, // 4x MSAA
+            },
+            depthStencil: {
+                format: 'depth24plus', // or 'depth32float'
+                depthWriteEnabled: true,
+                depthCompare: 'less',  // Common default
+            },
+        };
+        const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
         async function update() {
+
+            canvas.width = window.innerWidth
+            canvas.height = window.innerHeight
             sphereObject.rotation.y += 0.01;
-            const vertices = new Float32Array(sphereObject.props['vertices']);
             const binding0uniform = new Float32Array([
                 canvas.width,
-                canvas.height
+                canvas.height,
+                0,
+                0
             ]);
             const binding1uniform = new Float32Array([
                 sphereObject.position.x,
@@ -164,125 +274,13 @@ async function initWebGPU() {
             ]);
 
 
-            canvas.width = window.innerWidth
-            canvas.height = window.innerHeight
 
-            const vertexBuffer = device.createBuffer({
-                size: vertices.byteLength,
-                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            });
-            const uniform0Buffer = device.createBuffer({
-                size: binding0uniform.byteLength,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            });
-            const uniform1buffer = device.createBuffer({
-                size: binding1uniform.byteLength,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            });
+
 
             device.queue.writeBuffer(uniform0Buffer, 0, binding0uniform);
             device.queue.writeBuffer(uniform1buffer, 0, binding1uniform);
             device.queue.writeBuffer(vertexBuffer, 0, vertices, 0, vertices.length);
 
-            const vertexBuffers = [
-                {
-                    attributes: [
-                        {
-                            shaderLocation: 0, // position
-                            offset: 0,
-                            format: "float32x4",
-                        },
-                        {
-                            shaderLocation: 1, // color
-                            offset: 16,
-                            format: "float32x4",
-                        },
-                    ],
-                    arrayStride: 32,
-                    stepMode: "vertex",
-                },
-            ];
-            const bindGroupLayout = device.createBindGroupLayout({
-                entries: [{
-                    binding: 0,  // Must match @binding(0) in WGSL
-                    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'uniform'
-                    }
-                }
-                    , {
-                    binding: 1,  // Must match @binding(1) in WGSL
-                    visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'uniform'
-                    }
-                }]
-            });
-            const bindGroup = device.createBindGroup({
-                layout: bindGroupLayout,
-                entries: [{
-                    binding: 0,
-                    resource: { buffer: uniform0Buffer }
-                },
-                {
-                    binding: 1,
-                    resource: { buffer: uniform1buffer }
-                }]
-            });
-
-
-            const pipelineDescriptor = {
-                vertex: {
-                    module: shaderModule,
-                    entryPoint: "vertex_main",
-                    buffers: vertexBuffers,
-                },
-                fragment: {
-                    module: shaderModule,
-                    entryPoint: "fragment_main",
-                    targets: [
-                        {
-                            format: navigator.gpu.getPreferredCanvasFormat(),
-                            blend: {
-                                color: {
-                                    srcFactor: 'one',
-                                    dstFactor: 'one-minus-src-alpha'
-                                },
-                                alpha: {
-                                    srcFactor: 'one',
-                                    dstFactor: 'one-minus-src-alpha'
-                                },
-                            },
-                        },
-                    ],
-                },
-                primitive: {
-                    topology: "triangle-list",
-                },
-
-                layout: device.createPipelineLayout({
-                    bindGroupLayouts: [bindGroupLayout]
-                }),
-                multisample: {
-                    count: 4, // 4x MSAA
-                },
-                depthStencil: {
-                    format: 'depth24plus', // or 'depth32float'
-                    depthWriteEnabled: true,
-                    depthCompare: 'less',  // Common default
-                },
-            };
-            const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
-
-
-            const clearColor = { r: 1, g: 1, b: 1, a: 1.0 };
-            const sampleCount = 4;
-            const msaaTexture = device.createTexture({
-                size: { width: canvas.width, height: canvas.height, depthOrArrayLayers: 1 },
-                sampleCount,
-                format,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT,
-            });
             const depthTexture = device.createTexture({
                 size: { width: canvas.width, height: canvas.height, depthOrArrayLayers: 1 },
                 sampleCount,
@@ -291,8 +289,8 @@ async function initWebGPU() {
             });
             const renderPassDescriptor = {
                 colorAttachments: [{
-                    view: msaaTexture.createView(),
-                    resolveTarget: context.getCurrentTexture().createView(),
+                    view: context.getCurrentTexture().createView(),
+                    //resolveTarget: context.getCurrentTexture().createView(),
                     clearValue: clearColor,
                     loadOp: "clear",
                     storeOp: "store",
@@ -315,10 +313,7 @@ async function initWebGPU() {
             passEncoder.end();
 
             device.queue.submit([commandEncoder.finish()]);
-            //requestAnimationFrame(update);
-            const frameUpdateTimeout = setTimeout(() => {
-                requestAnimationFrame(update);
-            }, 1000 / 60); // 60 FPS
+            requestAnimationFrame(update);
         }
         update();
 

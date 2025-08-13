@@ -20,7 +20,7 @@ async function getContext() {
     }
     const device = await adapter.requestDevice({
         requiredLimits: {
-            maxBufferSize: 480000000, // Adjust as needed
+            maxBufferSize: 600000000, // Adjust as needed
         }
     });
     const canvas = document.getElementById("webgpu-canvas");
@@ -80,13 +80,56 @@ function dTimeUpdate() {
 }
 
 function getFps() {
-    const currentTime = performance.now();
     const fps = 1000 / deltaTime;
-    prevTime = currentTime;
     return fps;
 }
 
+class Vector4 {
+    constructor(x, y, z, w) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.w = w;
+    }
+}
+class Matrix4x4 {
+    constructor(vec1, vec2, vec3, vec4) {
+        this.vec1 = vec1; // vec4<f32>
+        this.vec2 = vec2; // vec4<f32>
+        this.vec3 = vec3; // vec4<f32>
+        this.vec4 = vec4; // vec4<f32>
+    }
+}
 
+function rotationalMatrix(angle) {
+    let cosX = Math.cos(angle.x);
+    let sinX = Math.sin(angle.x);
+    let cosY = Math.cos(angle.y);
+    let sinY = Math.sin(angle.y);
+    let cosZ = Math.cos(angle.z);
+    let sinZ = Math.sin(angle.z);
+
+    return new Matrix4x4(
+        new Vector4(cosY * cosZ, -cosY * sinZ, sinY, 0.0),
+        new Vector4(sinX * sinY * cosZ + cosX * sinZ, -sinX * sinY * sinZ + cosX * cosZ, -sinX * cosY, 0.0),
+        new Vector4(-cosX * sinY * cosZ + sinX * sinZ, cosX * sinY * sinZ + sinX * cosZ, cosX * cosY, 0.0),
+        new Vector4(0.0, 0.0, 0.0, 1.0)
+    );
+}
+function radians(degrees) {
+    return degrees * (Math.PI / 180);
+}
+function projectionMatrix(fovY, aspect, near, far) {
+    let f = 1.0 / Math.tan(radians(fovY) * 0.5);
+    let nf = 1.0 / (near - far);
+    let proj = new Matrix4x4(
+        new Vector4(f / aspect, 0.0, 0.0, 0.0),
+        new Vector4(0.0, f, 0.0, 0.0),
+        new Vector4(0.0, 0.0, (far + near) * nf, -1.0),
+        new Vector4(0.0, 0.0, 2.0 * far * near * nf, 0.0)
+    );
+    return proj;
+}
 
 class Vector3 {
     constructor(x, y, z) {
@@ -148,22 +191,9 @@ async function initWebGPU() {
             format: 'depth24plus',
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
         });
-        function resizeCanvasAndDepthTexture() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            if (depthTexture) depthTexture.destroy();
-            depthTexture = device.createTexture({
-                size: [canvas.width, canvas.height],
-                sampleCount,
-                format: 'depth24plus',
-                usage: GPUTextureUsage.RENDER_ATTACHMENT,
-            });
-        }
-        window.addEventListener('resize', resizeCanvasAndDepthTexture);
-        resizeCanvasAndDepthTexture();
         const clearColor = { r: 0, g: 0, b: 0, a: 1.0 };
         const player = new Player();
-        const sphereObject = new Sphere(4000000, 5, 1);
+        const sphereObject = new Sphere(4200000, 5, 1);
 
 
         const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
@@ -183,11 +213,11 @@ async function initWebGPU() {
         device.queue.writeBuffer(indexBuffer, 0, indices);
 
         const uniform0Buffer = device.createBuffer({
-            size: 16,
+            size: 64,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         const uniform1buffer = device.createBuffer({
-            size: 32,
+            size: 80,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         const bindGroupLayout = device.createBindGroupLayout({
@@ -279,32 +309,52 @@ async function initWebGPU() {
             setTimeout(updateStats, 1000); // Update stats every sec
         }
         updateStats();
-        // Update frame and stuff
+
+
+        function resizeCanvasAndDepthTexture() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (depthTexture) depthTexture.destroy();
+            depthTexture = device.createTexture({
+                size: [canvas.width, canvas.height],
+                sampleCount,
+                format: 'depth24plus',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            });
+            const projection = projectionMatrix(90, canvas.width / canvas.height, 0.1, 1000);
+            const binding0uniform = new Float32Array([
+                projection.vec1.x, projection.vec1.y, projection.vec1.z, projection.vec1.w,
+                projection.vec2.x, projection.vec2.y, projection.vec2.z, projection.vec2.w,
+                projection.vec3.x, projection.vec3.y, projection.vec3.z, projection.vec3.w,
+                projection.vec4.x, projection.vec4.y, projection.vec4.z, projection.vec4.w,
+            ]);
+            device.queue.writeBuffer(uniform0Buffer, 0, binding0uniform);
+        }
+
+
+        window.addEventListener('resize', () => {
+            resizeCanvasAndDepthTexture();
+        });
+        resizeCanvasAndDepthTexture();
+
         async function update() {
             dTimeUpdate();
-            canvas.width = window.innerWidth
-            canvas.height = window.innerHeight
             sphereObject.rotation.x += 0.001 * deltaTime;
             sphereObject.rotation.y += 0.001 * deltaTime;
-            const binding0uniform = new Float32Array([
-                canvas.width,
-                canvas.height,
-                0,
-                0
-            ]);
+
+            const rm = rotationalMatrix(sphereObject.rotation);
             const binding1uniform = new Float32Array([
                 sphereObject.position.x,
                 sphereObject.position.y,
                 sphereObject.position.z,
                 0, //padding for 16 byte align
-                sphereObject.rotation.x,
-                sphereObject.rotation.y,
-                sphereObject.rotation.z,
-                0, //padding
+                rm.vec1.x, rm.vec1.y, rm.vec1.z, rm.vec1.w,
+                rm.vec2.x, rm.vec2.y, rm.vec2.z, rm.vec2.w,
+                rm.vec3.x, rm.vec3.y, rm.vec3.z, rm.vec3.w,
+                rm.vec4.x, rm.vec4.y, rm.vec4.z, rm.vec4.w,
             ]);
 
 
-            device.queue.writeBuffer(uniform0Buffer, 0, binding0uniform);
             device.queue.writeBuffer(uniform1buffer, 0, binding1uniform);
 
 

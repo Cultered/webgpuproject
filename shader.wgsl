@@ -1,15 +1,14 @@
 
 struct VertexOut {
     @builtin(position) position: vec4f,
-    @location(0) worldPos: vec4f,
+    @location(0) fragPosition: vec4f,
 };
 struct ViewUniforms {
-    width: f32,
-    height: f32,
+    projection: mat4x4<f32>,
 };
 struct ObjectUniform{
     position: vec4f,
-    rotation: vec4f,
+    rotation: mat4x4<f32>,
 };
 
 @group(0) @binding(0) // Use next available binding slot
@@ -17,25 +16,11 @@ var<uniform> view: ViewUniforms;
 @group(0) @binding(1) // Use next available binding slot
 var<uniform> object: ObjectUniform;
 
-fn perspectiveProjection(pos: vec4f, fovY: f32, aspect: f32, near: f32, far: f32) -> vec4f {
-    let f = 1.0 / tan(radians(fovY) * 0.5);
-    let nf = 1.0 / (near - far);
-    let proj = mat4x4<f32>(
-    vec4<f32>(f / aspect, 0.0,  0.0,                            0.0),
-    vec4<f32>(0.0,        f,    0.0,                            0.0),
-    vec4<f32>(0.0,        0.0,  (far + near) * nf,                      -1.0),
-    vec4<f32>(0.0,        0.0,  2.0 *far * near * nf,               0.0)
-);
-    return proj * pos;
-}
 
 
 @vertex
 fn vertex_main(@location(0) position: vec3f) -> VertexOut {
     var output: VertexOut;
-    var aspect = view.width / view.height;
-    var near = 0.1;
-    var far = 100000.;
 
     var cameraPosition = vec4f(0.0, 0.0, 2.0, 0.0);
 
@@ -43,43 +28,21 @@ fn vertex_main(@location(0) position: vec3f) -> VertexOut {
     // Convert position to vec4f for matrix multiplication
     let positionVec4 = vec4f(position, 1.0);
 
-    let rotatedPosition = rotationalMatrix(object.rotation) * positionVec4;
+    let rotatedPosition = object.rotation * positionVec4;
     let worldPosition = rotatedPosition + object.position;
     let relativePosition = worldPosition - cameraPosition;
-    let rotatedPlayerPosition = rotationalMatrix(vec4f(0.,radians(0.),0.,0.)) * relativePosition;
-    output.position = perspectiveProjection(rotatedPlayerPosition, 90., aspect, near, far);
-    output.worldPos = worldPosition;
+    output.position = view.projection * relativePosition;
+    output.fragPosition = positionVec4;
     return output;
-}
-
-fn rotationalMatrix(angle: vec4f) -> mat4x4<f32> {
-    let cosX = cos(angle.x);
-    let sinX = sin(angle.x);
-    let cosY = cos(angle.y);
-    let sinY = sin(angle.y);
-    let cosZ = cos(angle.z);
-    let sinZ = sin(angle.z);
-
-    return mat4x4<f32>(
-        vec4<f32>(cosY * cosZ, -cosY * sinZ, sinY, 0.0),
-        vec4<f32>(sinX * sinY * cosZ + cosX * sinZ, -sinX * sinY * sinZ + cosX * cosZ, -sinX * cosY, 0.0),
-        vec4<f32>(-cosX * sinY * cosZ + sinX * sinZ, cosX * sinY * sinZ + sinX * cosZ, cosX * cosY, 0.0),
-        vec4<f32>(0.0, 0.0, 0.0, 1.0)
-    );
-}
-
-fn random(st: vec4f) -> f32 {
-    return fract(sin(dot(st.xyzw,
-        vec4(12.9898, 78.233, 352.321, 98.32))) * 43758.5453123);
 }
 
 @fragment
 fn fragment_main(fragData: VertexOut) -> @location(0) vec4f {
     // Example: color based on world position (normalized to [0,1])
     let color = vec4f(
-        0.5+0.5 * fragData.worldPos.x,
-        0.5+0.5 * fragData.worldPos.y,
-        0.5+0.5 * fragData.worldPos.z,
+        0.5+0.5 * fragData.fragPosition.x,
+        0.5+0.5 * fragData.fragPosition.y,
+        0.5+0.5 * fragData.fragPosition.z,
         1.0
     );
     return color;

@@ -7,9 +7,15 @@ struct ViewUniforms {
     width: f32,
     height: f32,
 };
+struct ObjectUniform{
+    position: vec4f,
+    rotation: vec4f,
+};
 
 @group(0) @binding(0) // Use next available binding slot
 var<uniform> view: ViewUniforms;
+@group(0) @binding(1) // Use next available binding slot
+var<uniform> object: ObjectUniform;
 
 fn perspectiveProjection(pos: vec4f, fovY: f32, aspect: f32, near: f32, far: f32) -> vec4f {
     let f = 1.0 / tan(radians(fovY) * 0.5);
@@ -36,20 +42,32 @@ fn vertex_main(@location(0) position: vec4f,
 
 
     // Apply a rotation around the Y axis
-    let angle = radians(10.0);
-    let cosA = cos(angle);
-    let sinA = sin(angle);
-    let rotationY = mat4x4<f32>(
-        vec4<f32>(cosA, 0.0, -sinA, 0.0),
-        vec4<f32>(0.0, 1.0, 0.0, 0.0),
-        vec4<f32>(sinA, 0.0, cosA, 0.0),
-        vec4<f32>(0.0, 0.0, 0.0, 1.0)
-    );
-    let relativePosition = position - cameraPosition;
-    let rotatedPosition = rotationY * relativePosition;
-    output.position = perspectiveProjection(rotatedPosition, 90., aspect, near, far);
+    let cameraRotation = radians(0.0);
+    
+
+    let rotatedPosition = rotationalMatrix(object.rotation) * position;
+    let worldPosition = rotatedPosition + object.position;
+    let relativePosition = worldPosition - cameraPosition;
+    let rotatedPlayerPosition = rotationalMatrix(vec4f(0.,radians(0.),0.,0.)) * relativePosition;
+    output.position = perspectiveProjection(rotatedPlayerPosition, 90., aspect, near, far);
     output.color = color;
     return output;
+}
+
+fn rotationalMatrix(angle: vec4f) -> mat4x4<f32> {
+    let cosX = cos(angle.x);
+    let sinX = sin(angle.x);
+    let cosY = cos(angle.y);
+    let sinY = sin(angle.y);
+    let cosZ = cos(angle.z);
+    let sinZ = sin(angle.z);
+
+    return mat4x4<f32>(
+        vec4<f32>(cosY * cosZ, -cosY * sinZ, sinY, 0.0),
+        vec4<f32>(sinX * sinY * cosZ + cosX * sinZ, -sinX * sinY * sinZ + cosX * cosZ, -sinX * cosY, 0.0),
+        vec4<f32>(-cosX * sinY * cosZ + sinX * sinZ, cosX * sinY * sinZ + sinX * cosZ, cosX * cosY, 0.0),
+        vec4<f32>(0.0, 0.0, 0.0, 1.0)
+    );
 }
 
 fn random(st: vec4f) -> f32 {

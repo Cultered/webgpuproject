@@ -34,57 +34,42 @@ async function getContext() {
     return [adapter, device, canvas, context, format];
 }
 
-function sphere(lat, long, radius) {
-    const verticesArray = [];
-    const latitudeBands = lat;
-    const longitudeBands = long;
-    // Generate sphere vertices (triangle list)
-    for (let lat = 0; lat < latitudeBands; lat++) {
-        const theta1 = (lat / latitudeBands) * Math.PI;
-        const theta2 = ((lat + 1) / latitudeBands) * Math.PI;
+function generateIndexedSphere(lati, long, radius) {
+    const vertices = [];
+    const indices = [];
 
-        for (let lon = 0; lon < longitudeBands; lon++) {
-            const phi1 = (lon / longitudeBands) * 2 * Math.PI;
-            const phi2 = ((lon + 1) / longitudeBands) * 2 * Math.PI;
+    for (let lat = 0; lat <= lati; lat++) {
+        const theta = (lat / lati) * Math.PI;
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
 
-            // Four points of the quad
-            const p1 = [
-                radius * Math.sin(theta1) * Math.cos(phi1),
-                radius * Math.cos(theta1),
-                radius * Math.sin(theta1) * Math.sin(phi1),
-                1
-            ];
-            const p2 = [
-                radius * Math.sin(theta2) * Math.cos(phi1),
-                radius * Math.cos(theta2),
-                radius * Math.sin(theta2) * Math.sin(phi1),
-                1
-            ];
-            const p3 = [
-                radius * Math.sin(theta2) * Math.cos(phi2),
-                radius * Math.cos(theta2),
-                radius * Math.sin(theta2) * Math.sin(phi2),
-                1
-            ];
-            const p4 = [
-                radius * Math.sin(theta1) * Math.cos(phi2),
-                radius * Math.cos(theta1),
-                radius * Math.sin(theta1) * Math.sin(phi2),
-                1
-            ];
+        for (let lon = 0; lon <= long; lon++) {
+            const phi = (lon / long) * 2 * Math.PI;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
 
-            // First triangle
-            verticesArray.push(...p1);
-            verticesArray.push(...p2);
-            verticesArray.push(...p3);
+            const x = radius * sinTheta * cosPhi;
+            const y = radius * cosTheta;
+            const z = radius * sinTheta * sinPhi;
 
-            // Second triangle
-            verticesArray.push(...p1);
-            verticesArray.push(...p3);
-            verticesArray.push(...p4);
+            vertices.push(x, y, z); // use vec3<f32>
         }
     }
-    return verticesArray;
+
+    for (let lat = 0; lat < lati; lat++) {
+        for (let lon = 0; lon < long; lon++) {
+            const first = lat * (long + 1) + lon;
+            const second = first + long + 1;
+
+            indices.push(first, first + 1, second);
+            indices.push(second, first + 1, second + 1);
+        }
+    }
+
+    return {
+        vertices: new Float32Array(vertices),
+        indices: new Uint32Array(indices),
+    };
 }
 
 function dTimeUpdate() {
@@ -138,9 +123,11 @@ class Sphere extends GameObject {
         this.lat = lat;
         this.long = long;
         console.log("Creating sphere")
-        const verticesArray = sphere(lat, long, radius)
-        console.log("Sphere created with vertices count:", verticesArray.length / 4);
-        this.props['vertices'] = verticesArray;
+        const { vertices, indices } = generateIndexedSphere(lat, long, radius);
+
+        console.log("Sphere created with vertex count: " + vertices.length + " and triangles count: " + indices.length / 3);
+        this.props['vertices'] = vertices;
+        this.props['indices'] = indices;
     }
 }
 
@@ -149,7 +136,7 @@ class Sphere extends GameObject {
 async function initWebGPU() {
 
     try {
-        const [_, device, canvas, context, format] = await getContext()
+        const [adapter, device, canvas, context, format] = await getContext()
         const sampleCount = 1;
         canvas.addEventListener("webgpucontextlost", (event) => {
             event.preventDefault();
@@ -176,19 +163,25 @@ async function initWebGPU() {
         resizeCanvasAndDepthTexture();
         const clearColor = { r: 0, g: 0, b: 0, a: 1.0 };
         const player = new Player();
-        const sphereObject = new Sphere(1000000, 5, 1);
-        const vertices = new Float32Array(sphereObject.props['vertices']);
+        const sphereObject = new Sphere(4000000, 5, 1);
 
-        function updateStats() {
-            stats.innerText = `FPS: ${getFps().toFixed(0)} Vertices: ${(vertices.length / 4).toLocaleString()}`;
-            setTimeout(updateStats, 1000); // Update stats every sec
-        }
-        updateStats();
+
         const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
+
+        vertices = sphereObject.props['vertices'];
         const vertexBuffer = device.createBuffer({
             size: vertices.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
+        device.queue.writeBuffer(vertexBuffer, 0, vertices, 0, vertices.length);
+
+        indices = sphereObject.props['indices'];
+        const indexBuffer = device.createBuffer({
+            size: indices.byteLength,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(indexBuffer, 0, indices);
+
         const uniform0Buffer = device.createBuffer({
             size: 16,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -197,20 +190,6 @@ async function initWebGPU() {
             size: 32,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-        const vertexBuffers = [
-            {
-                attributes: [
-                    {
-                        shaderLocation: 0, // position
-                        offset: 0,
-                        format: "float32x4",
-                    }
-                ],
-                arrayStride: 16,
-                stepMode: "vertex",
-            },
-        ];
-        device.queue.writeBuffer(vertexBuffer, 0, vertices, 0, vertices.length);
         const bindGroupLayout = device.createBindGroupLayout({
             entries: [{
                 binding: 0,  // Must match @binding(0) in WGSL
@@ -238,6 +217,19 @@ async function initWebGPU() {
                 resource: { buffer: uniform1buffer }
             }]
         });
+        const vertexBuffers = [
+            {
+                attributes: [
+                    {
+                        shaderLocation: 0, // position
+                        offset: 0,
+                        format: "float32x3",
+                    }
+                ],
+                arrayStride: 12,
+                stepMode: "vertex",
+            },
+        ];
         const pipelineDescriptor = {
             vertex: {
                 module: shaderModule,
@@ -265,6 +257,7 @@ async function initWebGPU() {
             },
             primitive: {
                 topology: "triangle-list",
+                cullMode: "back",
             },
 
             layout: device.createPipelineLayout({
@@ -281,7 +274,11 @@ async function initWebGPU() {
         };
         const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
 
-
+        function updateStats() {
+            stats.innerText = `FPS: ${getFps().toFixed(0)} Vertices: ${(vertices.length).toLocaleString()}`;
+            setTimeout(updateStats, 1000); // Update stats every sec
+        }
+        updateStats();
         // Update frame and stuff
         async function update() {
             dTimeUpdate();
@@ -305,9 +302,6 @@ async function initWebGPU() {
                 sphereObject.rotation.z,
                 0, //padding
             ]);
-
-
-
 
 
             device.queue.writeBuffer(uniform0Buffer, 0, binding0uniform);
@@ -334,9 +328,12 @@ async function initWebGPU() {
             const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
             passEncoder.setPipeline(renderPipeline);
             passEncoder.setVertexBuffer(0, vertexBuffer);
-            passEncoder.setBindGroup(0, bindGroup);
+            passEncoder.setIndexBuffer(indexBuffer, "uint32"); // Or "uint16" if using Uint16Array
 
-            passEncoder.draw(vertices.length / 4);
+
+            passEncoder.setBindGroup(0, bindGroup);
+            passEncoder.drawIndexed(indices.length);
+
             passEncoder.end();
 
             device.queue.submit([commandEncoder.finish()]);

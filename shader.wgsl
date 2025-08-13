@@ -23,15 +23,15 @@ fn perspectiveProjection(pos: vec4f, fovY: f32, aspect: f32, near: f32, far: f32
     let proj = mat4x4<f32>(
     vec4<f32>(f / aspect, 0.0,  0.0,                            0.0),
     vec4<f32>(0.0,        f,    0.0,                            0.0),
-    vec4<f32>(0.0,        0.0,  far * nf,                      -1.0),
-    vec4<f32>(0.0,        0.0,  far * near * nf,               0.0)
+    vec4<f32>(0.0,        0.0,  (far + near) * nf,                      -1.0),
+    vec4<f32>(0.0,        0.0,  2.0 *far * near * nf,               0.0)
 );
     return proj * pos;
 }
 
 
 @vertex
-fn vertex_main(@location(0) position: vec4f) -> VertexOut {
+fn vertex_main(@location(0) position: vec3f) -> VertexOut {
     var output: VertexOut;
     var aspect = view.width / view.height;
     var near = 0.1;
@@ -40,11 +40,10 @@ fn vertex_main(@location(0) position: vec4f) -> VertexOut {
     var cameraPosition = vec4f(0.0, 0.0, 2.0, 0.0);
 
 
-    // Apply a rotation around the Y axis
-    let cameraRotation = radians(0.0);
-    
+    // Convert position to vec4f for matrix multiplication
+    let positionVec4 = vec4f(position, 1.0);
 
-    let rotatedPosition = rotationalMatrix(object.rotation) * position;
+    let rotatedPosition = rotationalMatrix(object.rotation) * positionVec4;
     let worldPosition = rotatedPosition + object.position;
     let relativePosition = worldPosition - cameraPosition;
     let rotatedPlayerPosition = rotationalMatrix(vec4f(0.,radians(0.),0.,0.)) * relativePosition;

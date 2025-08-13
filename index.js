@@ -17,7 +17,11 @@ async function getContext() {
     if (!adapter) {
         throw new Error("No adapter found");
     }
-    const device = await adapter.requestDevice();
+    const device = await adapter.requestDevice({
+        requiredLimits: {
+            maxBufferSize: 432000000, // Adjust as needed
+        }
+    });
     const canvas = document.getElementById("webgpu-canvas");
     const context = canvas.getContext("webgpu");
     const format = navigator.gpu.getPreferredCanvasFormat();
@@ -169,14 +173,34 @@ async function initWebGPU() {
 
     try {
         const [_, device, canvas, context, format] = await getContext()
+        const sampleCount = 1;
         canvas.addEventListener("webgpucontextlost", (event) => {
             event.preventDefault();
             console.error("WebGPU context lost! Attempting to recover...");
         });
-
-        const verticesArray = sphere(15, 5, 1)
+        let depthTexture = device.createTexture({
+            size: { width: canvas.width, height: canvas.height, depthOrArrayLayers: 1 },
+            sampleCount,
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        function resizeCanvasAndDepthTexture() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (depthTexture) depthTexture.destroy();
+            depthTexture = device.createTexture({
+                size: [canvas.width, canvas.height],
+                sampleCount,
+                format: 'depth24plus',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT,
+            });
+        }
+        window.addEventListener('resize', resizeCanvasAndDepthTexture);
+        resizeCanvasAndDepthTexture();
+        console.log("Creating sphere")
+        const verticesArray = sphere(1500, 1500, 1)
+        console.log("Sphere created with vertices count:", verticesArray.length / 8);
         const clearColor = { r: 0, g: 0, b: 0, a: 1.0 };
-        const sampleCount = 1;
         const player = new Player();
         const sphereObject = new Sphere(1, 30, 5);
         sphereObject.props['vertices'] = verticesArray;
@@ -212,6 +236,7 @@ async function initWebGPU() {
                 stepMode: "vertex",
             },
         ];
+        device.queue.writeBuffer(vertexBuffer, 0, vertices, 0, vertices.length);
         const bindGroupLayout = device.createBindGroupLayout({
             entries: [{
                 binding: 0,  // Must match @binding(0) in WGSL
@@ -281,12 +306,15 @@ async function initWebGPU() {
             },
         };
         const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
+
+
+        // Update frame and stuff
         async function update() {
             dTimeUpdate();
             canvas.width = window.innerWidth
             canvas.height = window.innerHeight
-            sphereObject.rotation.x += 0.001*deltaTime;
-            sphereObject.rotation.y += 0.001*deltaTime;
+            sphereObject.rotation.x += 0.001 * deltaTime;
+            sphereObject.rotation.y += 0.001 * deltaTime;
             const binding0uniform = new Float32Array([
                 canvas.width,
                 canvas.height,
@@ -310,14 +338,8 @@ async function initWebGPU() {
 
             device.queue.writeBuffer(uniform0Buffer, 0, binding0uniform);
             device.queue.writeBuffer(uniform1buffer, 0, binding1uniform);
-            device.queue.writeBuffer(vertexBuffer, 0, vertices, 0, vertices.length);
 
-            const depthTexture = device.createTexture({
-                size: { width: canvas.width, height: canvas.height, depthOrArrayLayers: 1 },
-                sampleCount,
-                format: 'depth24plus',
-                usage: GPUTextureUsage.RENDER_ATTACHMENT,
-            });
+
             const renderPassDescriptor = {
                 colorAttachments: [{
                     view: context.getCurrentTexture().createView(),

@@ -1,6 +1,7 @@
 // Globals
 var deltaTime = 0;
 var prevTime = 0;
+const stats = document.getElementById('stats');
 
 async function loadShaderModuleFromFile(device, url) {
     const code = await fetch(url).then(r => r.text());
@@ -72,39 +73,15 @@ function sphere(lat, long, radius) {
                 1
             ];
 
-            // Assign a unique color per quad based on lat/lon
-
-            const color1 = [
-                (lat) / latitudeBands,
-                (lon) / longitudeBands,
-                1.0 - (lat) / latitudeBands,
-                1
-            ]; const color2 = [
-                (lat + 1) / latitudeBands,
-                (lon) / longitudeBands,
-                1.0 - (lat + 1) / latitudeBands,
-                1
-            ]; const color3 = [
-                (lat + 1) / latitudeBands,
-                (lon + 1) / longitudeBands,
-                1.0 - (lat + 1) / latitudeBands,
-                1
-            ]; const color4 = [
-                (lat) / latitudeBands,
-                (lon + 1) / longitudeBands,
-                1.0 - (lat) / latitudeBands,
-                1
-            ];
-
             // First triangle
-            verticesArray.push(...p1, ...color1);
-            verticesArray.push(...p2, ...color2);
-            verticesArray.push(...p3, ...color3);
+            verticesArray.push(...p1);
+            verticesArray.push(...p2);
+            verticesArray.push(...p3);
 
             // Second triangle
-            verticesArray.push(...p1, ...color1);
-            verticesArray.push(...p3, ...color3);
-            verticesArray.push(...p4, ...color4);
+            verticesArray.push(...p1);
+            verticesArray.push(...p3);
+            verticesArray.push(...p4);
         }
     }
     return verticesArray;
@@ -124,11 +101,7 @@ function getFps() {
     return fps;
 }
 
-const canvas = document.getElementById("webgpu-canvas");
-canvas.addEventListener("click", (event) => {
-    console.log("Canvas clicked at:", event.clientX, event.clientY);
-    console.log("FPS:", getFps());
-});
+
 
 class Vector3 {
     constructor(x, y, z) {
@@ -198,13 +171,19 @@ async function initWebGPU() {
         window.addEventListener('resize', resizeCanvasAndDepthTexture);
         resizeCanvasAndDepthTexture();
         console.log("Creating sphere")
-        const verticesArray = sphere(1500, 1500, 1)
-        console.log("Sphere created with vertices count:", verticesArray.length / 8);
+        const verticesArray = sphere(2000, 2000, 1)
+        console.log("Sphere created with vertices count:", verticesArray.length / 4);
         const clearColor = { r: 0, g: 0, b: 0, a: 1.0 };
         const player = new Player();
         const sphereObject = new Sphere(1, 30, 5);
         sphereObject.props['vertices'] = verticesArray;
         const vertices = new Float32Array(sphereObject.props['vertices']);
+
+        function updateStats() {
+            stats.innerText = `FPS: ${getFps().toFixed(0)} Vertices: ${(vertices.length / 4).toLocaleString()}`;
+            setTimeout(updateStats, 1000); // Update stats every sec
+        }
+        updateStats();
         const shaderModule = await loadShaderModuleFromFile(device, './shader.wgsl');
         const vertexBuffer = device.createBuffer({
             size: vertices.byteLength,
@@ -225,14 +204,9 @@ async function initWebGPU() {
                         shaderLocation: 0, // position
                         offset: 0,
                         format: "float32x4",
-                    },
-                    {
-                        shaderLocation: 1, // color
-                        offset: 16,
-                        format: "float32x4",
-                    },
+                    }
                 ],
-                arrayStride: 32,
+                arrayStride: 16,
                 stepMode: "vertex",
             },
         ];

@@ -1,7 +1,7 @@
 
 struct VertexOut {
     @builtin(position) position: vec4f,
-    @location(0) color: vec4f
+    @location(0) worldPos: vec4f,
 };
 struct ViewUniforms {
     width: f32,
@@ -31,8 +31,7 @@ fn perspectiveProjection(pos: vec4f, fovY: f32, aspect: f32, near: f32, far: f32
 
 
 @vertex
-fn vertex_main(@location(0) position: vec4f,
-    @location(1) color: vec4f) -> VertexOut {
+fn vertex_main(@location(0) position: vec4f) -> VertexOut {
     var output: VertexOut;
     var aspect = view.width / view.height;
     var near = 0.1;
@@ -50,7 +49,7 @@ fn vertex_main(@location(0) position: vec4f,
     let relativePosition = worldPosition - cameraPosition;
     let rotatedPlayerPosition = rotationalMatrix(vec4f(0.,radians(0.),0.,0.)) * relativePosition;
     output.position = perspectiveProjection(rotatedPlayerPosition, 90., aspect, near, far);
-    output.color = color;
+    output.worldPos = worldPosition;
     return output;
 }
 
@@ -77,9 +76,12 @@ fn random(st: vec4f) -> f32 {
 
 @fragment
 fn fragment_main(fragData: VertexOut) -> @location(0) vec4f {
-    var x = fragData.position.x / view.width;
-    var y = fragData.position.y / view.height;
-    var z = 0.;
-    var w = 1.;
-    return fragData.color;
+    // Example: color based on world position (normalized to [0,1])
+    let color = vec4f(
+        0.5+0.5 * fragData.worldPos.x,
+        0.5+0.5 * fragData.worldPos.y,
+        0.5+0.5 * fragData.worldPos.z,
+        1.0
+    );
+    return color;
 }

@@ -20,7 +20,7 @@ async function getContext() {
     }
     const device = await adapter.requestDevice({
         requiredLimits: {
-            maxBufferSize: 432000000, // Adjust as needed
+            maxBufferSize: 480000000, // Adjust as needed
         }
     });
     const canvas = document.getElementById("webgpu-canvas");
@@ -137,6 +137,10 @@ class Sphere extends GameObject {
         this.radius = radius;
         this.lat = lat;
         this.long = long;
+        console.log("Creating sphere")
+        const verticesArray = sphere(lat, long, radius)
+        console.log("Sphere created with vertices count:", verticesArray.length / 4);
+        this.props['vertices'] = verticesArray;
     }
 }
 
@@ -170,13 +174,9 @@ async function initWebGPU() {
         }
         window.addEventListener('resize', resizeCanvasAndDepthTexture);
         resizeCanvasAndDepthTexture();
-        console.log("Creating sphere")
-        const verticesArray = sphere(2000, 2000, 1)
-        console.log("Sphere created with vertices count:", verticesArray.length / 4);
         const clearColor = { r: 0, g: 0, b: 0, a: 1.0 };
         const player = new Player();
-        const sphereObject = new Sphere(1, 30, 5);
-        sphereObject.props['vertices'] = verticesArray;
+        const sphereObject = new Sphere(1000000, 5, 1);
         const vertices = new Float32Array(sphereObject.props['vertices']);
 
         function updateStats() {
@@ -336,7 +336,7 @@ async function initWebGPU() {
             passEncoder.setVertexBuffer(0, vertexBuffer);
             passEncoder.setBindGroup(0, bindGroup);
 
-            passEncoder.draw(vertices.length / 8);
+            passEncoder.draw(vertices.length / 4);
             passEncoder.end();
 
             device.queue.submit([commandEncoder.finish()]);

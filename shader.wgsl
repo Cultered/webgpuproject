@@ -21,11 +21,11 @@ fn perspectiveProjection(pos: vec4f, fovY: f32, aspect: f32, near: f32, far: f32
     let f = 1.0 / tan(radians(fovY) * 0.5);
     let nf = 1.0 / (near - far);
     let proj = mat4x4<f32>(
-        vec4<f32>(f / aspect, 0.0, 0.0, 0.0),
-        vec4<f32>(0.0, f, 0.0, 0.0),
-        vec4<f32>(0.0, 0.0, (far + near) * nf, -1.0),
-        vec4<f32>(0.0, 0.0, (2.0 * far * near) * nf, 0.0)
-    );
+    vec4<f32>(f / aspect, 0.0,  0.0,                            0.0),
+    vec4<f32>(0.0,        f,    0.0,                            0.0),
+    vec4<f32>(0.0,        0.0,  far * nf,                      -1.0),
+    vec4<f32>(0.0,        0.0,  far * near * nf,               0.0)
+);
     return proj * pos;
 }
 

@@ -1,3 +1,7 @@
+// Globals
+var deltaTime = 0;
+var prevTime = 0;
+
 async function loadShaderModuleFromFile(device, url) {
     const code = await fetch(url).then(r => r.text());
     return device.createShaderModule({ code });
@@ -7,7 +11,9 @@ async function getContext() {
         console.error("WebGPU API unavailable");
         return;
     }
-    const adapter = await navigator.gpu.requestAdapter();
+    const adapter = await navigator.gpu.requestAdapter({
+        powerPreference: "high-performance"
+    });
     if (!adapter) {
         throw new Error("No adapter found");
     }
@@ -23,7 +29,7 @@ async function getContext() {
     return [adapter, device, canvas, context, format];
 }
 
-async function sphere(lat, long, radius) {
+function sphere(lat, long, radius) {
     const verticesArray = [];
     const latitudeBands = lat;
     const longitudeBands = long;
@@ -99,6 +105,27 @@ async function sphere(lat, long, radius) {
     }
     return verticesArray;
 }
+
+function dTimeUpdate() {
+    const currentTime = performance.now();
+    deltaTime = (currentTime - prevTime);
+    prevTime = currentTime;
+    return deltaTime;
+}
+
+function getFps() {
+    const currentTime = performance.now();
+    const fps = 1000 / deltaTime;
+    prevTime = currentTime;
+    return fps;
+}
+
+const canvas = document.getElementById("webgpu-canvas");
+canvas.addEventListener("click", (event) => {
+    console.log("Canvas clicked at:", event.clientX, event.clientY);
+    console.log("FPS:", getFps());
+});
+
 class Vector3 {
     constructor(x, y, z) {
         this.x = x;
@@ -135,6 +162,9 @@ class Sphere extends GameObject {
         this.long = long;
     }
 }
+
+
+
 async function initWebGPU() {
 
     try {
@@ -144,8 +174,8 @@ async function initWebGPU() {
             console.error("WebGPU context lost! Attempting to recover...");
         });
 
-        const verticesArray = await sphere(30, 5, 1)
-        const clearColor = { r: 1, g: 1, b: 1, a: 1.0 };
+        const verticesArray = sphere(15, 5, 1)
+        const clearColor = { r: 0, g: 0, b: 0, a: 1.0 };
         const sampleCount = 1;
         const player = new Player();
         const sphereObject = new Sphere(1, 30, 5);
@@ -252,10 +282,11 @@ async function initWebGPU() {
         };
         const renderPipeline = device.createRenderPipeline(pipelineDescriptor);
         async function update() {
-
+            dTimeUpdate();
             canvas.width = window.innerWidth
             canvas.height = window.innerHeight
-            sphereObject.rotation.y += 0.01;
+            sphereObject.rotation.x += 0.001*deltaTime;
+            sphereObject.rotation.y += 0.001*deltaTime;
             const binding0uniform = new Float32Array([
                 canvas.width,
                 canvas.height,
